@@ -1,0 +1,6 @@
+<devGroup group="Focusers">
+    <device label="Focuser Rob">
+    <driver name="Focuser Rob">indi_rob_focuser</driver>
+    <version>0.1</version>
+    </device>
+</devGroup>

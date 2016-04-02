@@ -1,0 +1,33 @@
+Rob's INDI Focuser driver
+=========================
+
+This package provides an INDI driver which uses one of these boards:
+
+http://www.hobbytronics.co.uk/motor-control/pololu-tb6612fng
+
+...containing one of these chips:
+
+http://toshiba.semicon-storage.com/info/docget.jsp?did=10660&prodName=TB6612FNG
+
+...to drive a High Res Stepper Motor kits (Model STM) from Moonlight Focusers.
+
+Requirements
+============
+
++ libindi0 >= v0.9 (http://indi.sf.net)
+
+You need to install both libindi0 and libindi-dev to build this package.
+	
+Installation
+============
+
+See INSTALL
+	
+How to Use
+==========
+
+To run the driver from the command line:
+	
+$ indiserver indi_rob_focuser
+
+You can then connect to the driver from any client, the default port is 7624. If you're using KStars, the driver will be automatically listed in KStars' Device Manager, no further configuration is necessary.
