@@ -19,7 +19,7 @@ include_directories (${INDI_INCLUDE_DIR})
 ########### Focuser Rob ###############
 set (rob_focuser_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/focuser_rob.cpp)
 add_executable (indi_rob_focuser ${rob_focuser_SRCS})
-target_link_libraries (indi_rob_focuser ${INDI_LIBRARIES} ${INDI_DRIVER_LIBRARIES})
+target_link_libraries (indi_rob_focuser libwiringX.so ${INDI_LIBRARIES} ${INDI_DRIVER_LIBRARIES})
 
 if (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm*")
 target_link_libraries (indi_rob_focuser rt)

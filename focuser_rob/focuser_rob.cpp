@@ -20,10 +20,65 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <memory>
- 
+#include <wiringX.h>
+
 /**************************************************************************************
  * DEFINES
  **************************************************************************************/
+
+/* Courtesy of a Mr timglowforge at this Solid Run forum post:
+ *
+ * http://forum.solid-run.com/linux-kernel-and-bootloaders-on-cubox-i-and-hummin-f10/how-to-control-hummingboard-gpio-from-kernel-space-t2345.html
+ *
+ * ...and http://wiringx.org/, the GPIO mapping of header pin number for the
+ * Hummingboard (HB#) to wiringX number (WiringX#) is as follows:
+ * 
+ * HB# HB Net    MicroSOM Net   i.MX6 Pad   GPIO Signal  Mode  Bank  Pin  Linux# WiringX# 
+ * 1   3.2V
+ * 2   5.OV
+ * 3   SDA1      I2C3_SDA       EIM_D18     GPIO3_I018   ALT5   3    18   82
+ * 4   5.0V
+ * 5   SCL1      I2C3_SCL       EIM_D17     GPIC3_I017   ALT5   3    17   81
+ * 6   GND
+ * 7   GPIO_GCLK USB_OTG_ID     GPIO_1      GPIO1_IO01   ALT5   1    1    1      7
+ * 8   TXD0      UART1_TX_DATA  CSIO_DAT10  GPIO5_IO28   ALT5   5    28   156
+ * 9   GND
+ * 10  RXD0      UART1_RX_DATA  CSIO_DAT11  GPIO5_IO29   ALT5   5    29   157
+ * 11  GPIO_GEN0 DISP1_DATA00   EIM_DA9     GPIO3_IO09   ALT5   3    9    73     0
+ * 12  GPIO_GEN1 DISP1_DATA01   EIM_DA8     GPIO3_IO08   ALT5   3    8    72     1
+ * 13  GPIO_GEN2 DISP1_DATA02   EIM_DA7     GPIO3_IO07   ALT5   3    7    71     2
+ * 14  GND
+ * 15  GPIO_GEN3 DISP1_DATA03   EIM_DA6     GPIO3_IO06   ALT5   3    6    70     3
+ * 16  GPIO_GEN4 SD3_CMD        SD3_CMD     GPIO7_IO02   ALT5   7    2    194    4
+ * 17  3.2V
+ * 18  GPIO_GEN5 SD3_CLK        SD3_CLK     GPIO7_IO03   ALT5   7    3    195    5
+ * 19  SPI_MOSI  ECSPI2_MOSI    EIM_CS1     GPIO2_IO24   ALT5   2    24   56
+ * 20  GND
+ * 21  SPI_MOSO  ECSPI2_MOSO    EIM_OE      GPIO2_IO25   ALT5   2    25   57
+ * 22  GPIO_GEN6 DISP1_DATA06   EIM_DA3     GPIO3_IO03   ALT5   3    3    67     6
+ * 23  SPI_SCLK  ECSPI2_SCLK    EIM_CS0     GPIO2_IO23   ALT5   2    23   55
+ * 24  SPI_CE0_N ECSPI2_SS0     EIM_RW      GPIO2_IO26   ALT5   2    26   58
+ * 25  GND
+ * 26  SPI_CE1_N ECSPI2_SS1     EIM_LBA     GPIO2_IO27   ALT5   2    27   59
+ */
+
+/* From the TB6612FNG documentation:
+ *
+ *        Input                       Output
+ * IN1  IN2  PWM  STBY          OUT1  OUT2    Mode
+ *  1    1   ---   1             0    0    Short brake
+ *  0    1    1    1             0    1    Counter-clockwise
+ *  0    1    0    1             0    0    Short brake
+ *  1    0    1    1             1    0    Clockwise
+ *  1    0    0    1             0    0    Short brake
+ *  0    0    1    1               Off     Stop
+ * ---  ---  ---   0               Off     Standby 
+ */
+ 
+#define IN1_TB6612FNG    0 /* GPIO0, header pin 11 */
+#define IN2_TB6612FNG    1 /* GPIO1, header pin 12 */
+#define PWM_TB6612FNG    2 /* GPIO2, header pin 13 */
+#define STBY_TB6612FNG   3 /* GPIO3, header pin 15 */
 
 /**************************************************************************************
  * PRIVATE VARIABLES
@@ -92,6 +147,16 @@ FocuserRob::FocuserRob()
 {
     initTicks = 0;
     SetFocuserCapability(FOCUSER_CAN_ABS_MOVE | FOCUSER_CAN_REL_MOVE);
+	
+	/* Set up wiringX and pins */
+    wiringXSetup();
+    pinMode(IN1_TB6612FNG, OUTPUT);
+    pinMode(IN2_TB6612FNG, OUTPUT);
+    pinMode(PWM_TB6612FNG, OUTPUT);
+    pinMode(STBY_TB6612FNG, OUTPUT);
+
+    /* Put the driver chip into standby */
+	digitalWrite(STBY_TB6612FNG, LOW);
 }
 
 /* Destructor */
@@ -226,7 +291,7 @@ IPState FocuserRob::MoveAbsFocuser(uint32_t targetTicks)
 	
         /* TODO: actually move */
         IDMessage(getDeviceName() , "TODO MoveAbsFocuser().");
-
+		
         FocusAbsPosN[0].value = targetTicks;
 		
         returnState = IPS_OK;
