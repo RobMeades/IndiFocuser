@@ -1,7 +1,7 @@
 /* This file implements Rob's focuser for Indi
  * It uses one of these boards:
  *
- * http://www.hobbytronics.co.uk/motor-control/pololu-tb6612fng
+ * https://www.pololu.com/product/713
  *
  * ...containing one of these chips:
  *
@@ -117,7 +117,8 @@ bool FocuserRob::Disconnect()
 /* INDI is asking us for our default device name */
 const char * FocuserRob::getDefaultName()
 {
-    return "Focuser Rob";
+	/* "Rob Focuser" rather than "Focuser Rob" as the latter gets confused with "Focuser Simulator" */
+    return "Rob Focuser";
 }
 
 /* Initialise properties */

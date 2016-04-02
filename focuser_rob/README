@@ -3,7 +3,7 @@ Rob's INDI Focuser driver
 
 This package provides an INDI driver which uses one of these boards:
 
-http://www.hobbytronics.co.uk/motor-control/pololu-tb6612fng
+https://www.pololu.com/product/713
 
 ...containing one of these chips:
 
@@ -30,4 +30,4 @@ To run the driver from the command line:
 	
 $ indiserver indi_rob_focuser
 
-You can then connect to the driver from any client, the default port is 7624. If you're using KStars, the driver will be automatically listed in KStars' Device Manager, no further configuration is necessary.
+You can then connect to the driver from any client, the default port is 7624.

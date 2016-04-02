@@ -1,7 +1,7 @@
 /* This file implements the indi interfaces for
  * Rob's focuser, which uses one of these boards:
  *
- * http://www.hobbytronics.co.uk/motor-control/pololu-tb6612fng
+ * https://www.pololu.com/product/713
  *
  * ...containing one of these chips:
  *

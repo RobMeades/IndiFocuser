@@ -1,6 +1,5 @@
 Rob's Focuser Driver INSTALL
 ============================
-
 1) $ mkdir bld
 2) $ cd bld
 3) $ cmake -DCMAKE_INSTALL_PREFIX=/usr . ../indi-rob-focuser
