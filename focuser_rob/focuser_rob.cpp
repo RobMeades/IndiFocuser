@@ -183,6 +183,7 @@ IPState FocuserRob::MoveFocuser(FocusDirection dir, int speed, uint16_t duration
     else
     {
         /* TODO: actually move */
+        IDMessage(getDeviceName() , "TODO MoveFocuser().");
 
         ticks = plannedTicks;
         if (isDebug())
@@ -224,6 +225,7 @@ IPState FocuserRob::MoveAbsFocuser(uint32_t targetTicks)
         }
 	
         /* TODO: actually move */
+        IDMessage(getDeviceName() , "TODO MoveAbsFocuser().");
 
         FocusAbsPosN[0].value = targetTicks;
 		
