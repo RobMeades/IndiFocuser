@@ -8,11 +8,6 @@
  * http://toshiba.semicon-storage.com/info/docget.jsp?did=10660&prodName=TB6612FNG
  *
  * ...to drive a High Res Stepper Motor kits (Model STM) from Moonlight Focusers.
- *
- * The code is based on:
- *
- * libindi/drivers/focuser/focus_simulator.h
- *
  */
 
 #ifndef FOCUSER_ROB_H

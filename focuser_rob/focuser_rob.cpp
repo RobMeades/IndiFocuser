@@ -11,7 +11,11 @@
  *
  * This code is based on the Indi focuser example:
  *
- * libindi/drivers/focuser/focus_simulator.cpp
+ * https://sourceforge.net/p/indi/code/HEAD/tree/trunk/libindi/drivers/focuser/focus_simulator.cpp
+ *
+ * ...and the Moonlight focuser example:
+ *
+ * https://sourceforge.net/p/indi/code/HEAD/tree/trunk/libindi/drivers/focuser/moonlite.cpp
  */
 
 #include "focuser_rob.h"
@@ -74,15 +78,17 @@
  *  0    0    1    1               Off     Stop
  * ---  ---  ---   0               Off     Standby 
  */
- 
+
+/* Which GPIO pins do what */
 #define IN1_TB6612FNG    0 /* GPIO0, header pin 11 */
 #define IN2_TB6612FNG    1 /* GPIO1, header pin 12 */
 #define PWM_TB6612FNG    2 /* GPIO2, header pin 13 */
 #define STBY_TB6612FNG   3 /* GPIO3, header pin 15 */
 
-#define SPEED_MAX_TICKS_PER_SECOND 100
-
+/* If the time between ticks is more than this we can use the poll timer */
 #define MIN_POLL_TIMER_MS    10
+
+/* The time for which the PWM pin is held high */
 #define MIN_PWM_HIGH_TIME_MS 1
 
 /**************************************************************************************
@@ -99,6 +105,10 @@ std::unique_ptr <FocuserRob>  focuserRob(new FocuserRob());
 void FocuserRob::oneTick(uint16_t highTimeMs)
 {
     digitalWrite(PWM_TB6612FNG, HIGH);
+    if (isDebug())
+    {
+        IDLog(".");
+    }
     usleep(highTimeMs);
     digitalWrite(PWM_TB6612FNG, LOW);
 }
@@ -113,12 +123,20 @@ void FocuserRob::setDirection(bool isOutward)
         /* Counter clockwise */
         digitalWrite(IN1_TB6612FNG, LOW);
         digitalWrite(IN2_TB6612FNG, HIGH);	
+        if (isDebug())
+        {
+            IDLog("Direction set to counter-clockwise.\n");
+        }    
     }
     else
     {
         /* Clockwise */
         digitalWrite(IN1_TB6612FNG, HIGH);
         digitalWrite(IN2_TB6612FNG, LOW);	
+        if (isDebug())
+        {
+            IDLog("Direction set to clockwise.\n");
+        }    
     }
 }
 
@@ -128,6 +146,10 @@ void FocuserRob::setShortBreak()
 {
     digitalWrite(IN1_TB6612FNG, HIGH);
     digitalWrite(IN2_TB6612FNG, HIGH);	
+    if (isDebug())
+    {
+        IDLog("Motor set to SHORT BREAK.\n");
+    }    
 }
 
 /* Set the motor into stop mode.
@@ -138,6 +160,10 @@ void FocuserRob::setStop()
     digitalWrite(IN1_TB6612FNG, LOW);
     digitalWrite(IN2_TB6612FNG, LOW);	
     digitalWrite(PWM_TB6612FNG, HIGH);
+    if (isDebug())
+    {
+        IDLog("Motor set to STOP.\n");
+    }    
 }
 
 /* Set the motor into standby, or take it out.
@@ -149,10 +175,18 @@ void FocuserRob::setStandby(bool isOn)
     if (isOn)
     {
         digitalWrite(STBY_TB6612FNG, LOW);
+        if (isDebug())
+        {
+            IDLog("Motor in standby.\n");
+        }    
     }
     else
     {
         digitalWrite(STBY_TB6612FNG, HIGH);
+        if (isDebug())
+        {
+            IDLog("Motor running.\n");
+        }    
     }
 }
 
@@ -166,8 +200,8 @@ void FocuserRob::setVariablesAfterMove(int32_t relativeTicks)
     
     FocusAbsPosN[0].value += relativeTicks;
     FocusRelPosN[0].value = relativeTicks;
-    IDSetNumber(&FocusAbsPosNP, NULL);
-    IDSetNumber(&FocusRelPosNP, NULL);
+    IDSetNumber(&FocusAbsPosNP, "Absolute position set.");
+    IDSetNumber(&FocusRelPosNP, "Relative position set.");
 }
 
 /* Move the focuser by a given number of ticks.
@@ -189,7 +223,7 @@ IPState FocuserRob::move(int32_t relativeTicks)
     setDirection(relativeTicks < 0);
     
     /* Make relativeTicks absolute */
-    if (gDirectionIsOutward)
+    if (relativeTicks < 0)
     {
         relativeTicks = -relativeTicks;
     }
@@ -200,6 +234,11 @@ IPState FocuserRob::move(int32_t relativeTicks)
     if (delayMs < MIN_POLL_TIMER_MS)
     {
         /* The speed is too high to do on a timer, do the move here */
+        if (isDebug())
+        {
+            IDLog("Moving %d tick(s) inside move() function, delay %d ms, speed %g tick(s)/ms.\n", relativeTicks, delayMs, FocusSpeedN[0].value);
+        }
+        
         for (int32_t x = 0; x < relativeTicks; x++)
         {
             oneTick(MIN_PWM_HIGH_TIME_MS);
@@ -212,11 +251,21 @@ IPState FocuserRob::move(int32_t relativeTicks)
         /* Set things straight after the move */
         setVariablesAfterMove(relativeTicks);
         
+        if (isDebug())
+        {
+            IDLog("Move completed.\n");
+        }
+        
         returnState = IPS_OK;
     }
     else
     {
         /* The poll timer will do the move */
+        if (isDebug())
+        {
+            IDLog("Moving %d tick(s) using the poll timer, delay %d ms, speed %g tick(s)/ms.\n", relativeTicks, delayMs, FocusSpeedN[0].value);
+        }
+        
         gPollTimerMs = delayMs;
         gTicksRequired = (uint32_t) relativeTicks;
         SetTimer(gPollTimerMs);
@@ -293,7 +342,7 @@ FocuserRob::FocuserRob()
     gDirectionIsOutward = false;
     SetFocuserCapability(FOCUSER_CAN_ABS_MOVE | FOCUSER_CAN_REL_MOVE | FOCUSER_CAN_ABORT | FOCUSER_HAS_VARIABLE_SPEED);
 	
-	/* Set up wiringX and pins */
+	/* Set up wiringX and pin directions */
     wiringXSetup();
     pinMode(IN1_TB6612FNG, OUTPUT);
     pinMode(IN2_TB6612FNG, OUTPUT);
@@ -378,13 +427,13 @@ bool FocuserRob::SetFocuserSpeed(int speed)
         {
             if ((speed < FocusSpeedN[0].min) || (speed > FocusSpeedN[0].max))
             {
-                IDMessage(getDeviceName(), "Error, requested speed is out of range.");
+                IDMessage(getDeviceName(), "Error, requested speed is out of range (%d tick(s)/ms when range is %g to %g).", speed, FocusSpeedN[0].min, FocusSpeedN[0].max);
             }
             else
             {
                 FocusSpeedN[0].value = speed;
                 FocusSpeedNP.s = IPS_OK;
-                IDSetNumber(&FocusSpeedNP, "Speed set.");
+                IDSetNumber(&FocusSpeedNP, "Speed set to %g.", FocusSpeedN[0].value);
                 success = true;
             }
         }
@@ -401,9 +450,9 @@ bool FocuserRob::SetFocuserSpeed(int speed)
    speed is low enough. */
 void FocuserRob::TimerHit()
 {
+    /* Only do stuff if we're connected */        
     if (isConnected())
     {
-        /* Only do stuff if we're connected */        
         if (gTicksRequired > 0)
         {
             if (gTicksElapsed < gTicksRequired)
@@ -441,7 +490,8 @@ IPState FocuserRob::MoveFocuser(FocusDirection dir, int speed, uint16_t duration
 	
         if ((plannedAbsPos < FocusAbsPosN[0].min) || (plannedAbsPos > FocusAbsPosN[0].max))
         {
-            IDMessage(getDeviceName(), "Error, requested position is out of range.");
+            IDMessage(getDeviceName(), "Error, requested position is out of range (%d tick(s)/ms for %d ms gives %g tick(s) when range is %g to %g).",
+                      speed, duration, plannedAbsPos, FocusAbsPosN[0].min, FocusAbsPosN[0].max);
         }
         else
         {
@@ -462,7 +512,8 @@ IPState FocuserRob::MoveAbsFocuser(uint32_t targetTicks)
     {
         if ((targetTicks < FocusAbsPosN[0].min) || (targetTicks > FocusAbsPosN[0].max))
         {
-            IDMessage(getDeviceName(), "Error, requested position is out of range.");
+            IDMessage(getDeviceName(), "Error, requested position is out of range (%d tick(s) when range is %g to %g).",
+                      targetTicks, FocusAbsPosN[0].min, FocusAbsPosN[0].max);
         }
         else
         {
@@ -495,6 +546,10 @@ bool FocuserRob::AbortFocuser()
     /* If we were moving, setup the variables for how far we got */
     if (gTicksRequired > 0)
     {
+        if (isDebug())
+        {
+            IDLog("End of move at %d tick(s) out of %d.\n", gTicksElapsed, gTicksRequired);
+        }    
         setVariablesAfterMove(gTicksRequired - gTicksElapsed);
         gTicksRequired = 0;
     }
