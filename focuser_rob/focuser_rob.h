@@ -22,11 +22,21 @@
 
 class FocuserRob : public INDI::Focuser
 {
-    protected:
     private:
+    protected:
 
-        double ticks;
-        double initTicks;
+        uint32_t gTicksElapsed;
+        uint16_t gPollTimerMs;
+        uint32_t gTicksRequired;
+        bool gDirectionIsOutward;
+
+        void oneTick(uint16_t highTimeMs);
+        void setDirection(bool isOutward);
+        void setShortBreak();
+        void setStop();
+        void setStandby(bool isOn);
+        void setVariablesAfterMove(int32_t relativeTicks);
+		IPState move(int32_t ticks);
 
     public:
         FocuserRob();
@@ -42,9 +52,11 @@ class FocuserRob : public INDI::Focuser
 
         void TimerHit();
 
+        virtual bool SetFocuserSpeed(int speed);
         virtual IPState MoveFocuser(FocusDirection dir, int speed, uint16_t duration);
         virtual IPState MoveAbsFocuser(uint32_t ticks);
         virtual IPState MoveRelFocuser(FocusDirection dir, uint32_t ticks);
+        virtual bool AbortFocuser();
 };
 
 #endif

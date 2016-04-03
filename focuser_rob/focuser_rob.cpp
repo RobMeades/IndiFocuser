@@ -80,45 +80,188 @@
 #define PWM_TB6612FNG    2 /* GPIO2, header pin 13 */
 #define STBY_TB6612FNG   3 /* GPIO3, header pin 15 */
 
+#define SPEED_MAX_TICKS_PER_SECOND 100
+
+#define MIN_POLL_TIMER_MS    10
+#define MIN_PWM_HIGH_TIME_MS 1
+
 /**************************************************************************************
  * PRIVATE VARIABLES
  **************************************************************************************/
 
-std::unique_ptr<FocuserRob>  focuserRob(new FocuserRob());
+std::unique_ptr <FocuserRob>  focuserRob(new FocuserRob());
 
 /**************************************************************************************
- * FUNCTIONS OF BASE DEVICE (PUBLIC)
+ * PRIVATE FUNCTIONS OF FOCUSER
  **************************************************************************************/
 
-/* Return properties of focuser */
+/* Move by one tick, keeping the PWM output high for the given time. */
+void FocuserRob::oneTick(uint16_t highTimeMs)
+{
+    digitalWrite(PWM_TB6612FNG, HIGH);
+    usleep(highTimeMs);
+    digitalWrite(PWM_TB6612FNG, LOW);
+}
+ 
+/* Set the motor in the correct direction. */
+void FocuserRob::setDirection(bool isOutward)
+{
+    gDirectionIsOutward = false;
+    if (isOutward)
+    {
+        gDirectionIsOutward = true;
+        /* Counter clockwise */
+        digitalWrite(IN1_TB6612FNG, LOW);
+        digitalWrite(IN2_TB6612FNG, HIGH);	
+    }
+    else
+    {
+        /* Clockwise */
+        digitalWrite(IN1_TB6612FNG, HIGH);
+        digitalWrite(IN2_TB6612FNG, LOW);	
+    }
+}
+
+/* Set a short break.
+   Direction must be set up again after doing this. */
+void FocuserRob::setShortBreak()
+{
+    digitalWrite(IN1_TB6612FNG, HIGH);
+    digitalWrite(IN2_TB6612FNG, HIGH);	
+}
+
+/* Set the motor into stop mode.
+   Direction must be set up again after doing this. */
+void FocuserRob::setStop()
+{
+    digitalWrite(PWM_TB6612FNG, LOW);
+    digitalWrite(IN1_TB6612FNG, LOW);
+    digitalWrite(IN2_TB6612FNG, LOW);	
+    digitalWrite(PWM_TB6612FNG, HIGH);
+}
+
+/* Set the motor into standby, or take it out.
+   Set the motor to "stop" before calling this with
+   true and set the direction first before calling
+   this with false. */
+void FocuserRob::setStandby(bool isOn)
+{
+    if (isOn)
+    {
+        digitalWrite(STBY_TB6612FNG, LOW);
+    }
+    else
+    {
+        digitalWrite(STBY_TB6612FNG, HIGH);
+    }
+}
+
+/* Calculate the new position after a move. */
+void FocuserRob::setVariablesAfterMove(int32_t relativeTicks)
+{
+    if (gDirectionIsOutward)
+    {
+        relativeTicks = -relativeTicks;
+    }
+    
+    FocusAbsPosN[0].value += relativeTicks;
+    FocusRelPosN[0].value = relativeTicks;
+    IDSetNumber(&FocusAbsPosNP, NULL);
+    IDSetNumber(&FocusRelPosNP, NULL);
+}
+
+/* Move the focuser by a given number of ticks.
+   A positive number indicates inward focus. */
+IPState FocuserRob::move(int32_t relativeTicks)
+{
+    IPState returnState = IPS_ALERT;
+    uint16_t delayMs = 1000 / FocusSpeedN[0].value;
+	
+    if (gTicksRequired != 0)
+    {
+        /* If we're already doing stuff, stop first */
+        AbortFocuser();
+    }
+    
+    IDMessage(getDeviceName(), "Moving to requested position...");
+
+    /* Set the right direction */
+    setDirection(relativeTicks < 0);
+    
+    /* Make relativeTicks absolute */
+    if (gDirectionIsOutward)
+    {
+        relativeTicks = -relativeTicks;
+    }
+    
+    /* Take the driver chip out of standby */
+    setStandby(false);
+    
+    if (delayMs < MIN_POLL_TIMER_MS)
+    {
+        /* The speed is too high to do on a timer, do the move here */
+        for (int32_t x = 0; x < relativeTicks; x++)
+        {
+            oneTick(MIN_PWM_HIGH_TIME_MS);
+            usleep(MIN_POLL_TIMER_MS - MIN_PWM_HIGH_TIME_MS);
+        }
+        
+        setStop();
+        setStandby(true);
+        
+        /* Set things straight after the move */
+        setVariablesAfterMove(relativeTicks);
+        
+        returnState = IPS_OK;
+    }
+    else
+    {
+        /* The poll timer will do the move */
+        gPollTimerMs = delayMs;
+        gTicksRequired = (uint32_t) relativeTicks;
+        SetTimer(gPollTimerMs);
+        oneTick(MIN_PWM_HIGH_TIME_MS);
+        gTicksElapsed = 1;
+        
+        returnState = IPS_BUSY;
+    }
+    
+    return returnState;
+}
+
+/**************************************************************************************
+ * PUBLIC FUNCTIONS OF BASE DEVICE
+ **************************************************************************************/
+
+/* Return properties of focuser. */
 void ISGetProperties (const char *dev)
 {
     /* This will be handled by the inherited focuser class */
     focuserRob->ISGetProperties(dev);
 }
 
-/* Process new switch from client */
+/* Process new switch from client. */
 void ISNewSwitch (const char *dev, const char *name, ISState *states, char *names[], int n)
 {
     /* This will be handled by the inherited focuser class */
     focuserRob->ISNewSwitch(dev, name, states, names, n);
 }
 
-/* Process new text from client */
+/* Process new text from client. */
 void ISNewText (const char *dev, const char *name, char *texts[], char *names[], int n)
 {
     /* This will be handled by the inherited focuser class */
     focuserRob->ISNewText(dev, name, texts, names, n);
 }
 
-/* Process new number from client */
+/* Process new number from client. */
 void ISNewNumber (const char *dev, const char *name, double values[], char *names[], int n)
 {
     /* This will be handled by the inherited focuser class */
     focuserRob->ISNewNumber(dev, name, values, names, n);
 }
 
-/* Process new blob from client: not used in any focuser, so just stub it */
+/* Process new blob from client: not used in any focuser, so just stub it. */
 void ISNewBLOB (const char *dev, const char *name, int sizes[], int blobsizes[], char *blobs[], char *formats[], char *names[], int n)
 {
     INDI_UNUSED(dev);
@@ -131,7 +274,7 @@ void ISNewBLOB (const char *dev, const char *name, int sizes[], int blobsizes[],
     INDI_UNUSED(n);
 }
 
-/* Process snooped property from another driver */
+/* Process snooped property from another driver. */
 void ISSnoopDevice (XMLEle *root)
 {
     /* This will be handled by the inherited focuser class */
@@ -139,14 +282,16 @@ void ISSnoopDevice (XMLEle *root)
 }
 
 /**************************************************************************************
- * FUNCTIONS OF FOCUSER (PROTECTED)
+ * PUBLIC FUNCTIONS OF FOCUSER
  **************************************************************************************/
 
-/* Constructor */
+/* Constructor. */
 FocuserRob::FocuserRob()
 {
-    initTicks = 0;
-    SetFocuserCapability(FOCUSER_CAN_ABS_MOVE | FOCUSER_CAN_REL_MOVE);
+    gTicksElapsed = 0;
+    gTicksRequired = 0;
+    gDirectionIsOutward = false;
+    SetFocuserCapability(FOCUSER_CAN_ABS_MOVE | FOCUSER_CAN_REL_MOVE | FOCUSER_CAN_ABORT | FOCUSER_HAS_VARIABLE_SPEED);
 	
 	/* Set up wiringX and pins */
     wiringXSetup();
@@ -156,159 +301,212 @@ FocuserRob::FocuserRob()
     pinMode(STBY_TB6612FNG, OUTPUT);
 
     /* Put the driver chip into standby */
-	digitalWrite(STBY_TB6612FNG, LOW);
+    setStop();
+    setStandby(true);
 }
 
-/* Destructor */
+/* Destructor. */
 FocuserRob::~FocuserRob()
 {
 }
 
-/* Client is asking us to establish connection to the focuser */
+/* Client is asking us to establish connection to the focuser. */
 bool FocuserRob::Connect()
 {
-    SetTimer(1000);
     IDMessage(getDeviceName(), "Connected.");
     return true;
 }
 
-/* Client is asking us to terminate connection to the focuser */
+/* Client is asking us to terminate connection to the focuser. */
 bool FocuserRob::Disconnect()
 {
+    AbortFocuser();
     IDMessage(getDeviceName(), "Disconnected.");
     return true;
 }
 
-/* INDI is asking us for our default device name */
+/* INDI is asking us for our default device name. */
 const char * FocuserRob::getDefaultName()
 {
 	/* "Rob Focuser" rather than "Focuser Rob" as the latter gets confused with "Focuser Simulator" */
     return "Rob Focuser";
 }
 
-/* Initialise properties */
+/* Initialise properties. */
 bool FocuserRob::initProperties()
 {
     INDI::Focuser::initProperties();
 
-    ticks = initTicks;    
-    FocusAbsPosN[0].value = FocusAbsPosN[0].max / 2;    
+    /* Speed is in ticks per second */
+	FocusSpeedN[0].min = 1;
+    FocusSpeedN[0].max = 255;
+    FocusSpeedN[0].value = 100;    
+
+    /* Position is in ticks */
+    FocusAbsPosN[0].min = 0.0;
+    FocusAbsPosN[0].max = 60000.0;
+    FocusAbsPosN[0].value = (FocusAbsPosN[0].min + FocusAbsPosN[0].max) / 2;
+    FocusAbsPosN[0].step = 1;
+	
+    FocusRelPosN[0].min = 0.0;
+    FocusRelPosN[0].max = (FocusAbsPosN[0].min + FocusAbsPosN[0].max) / 2;
+    FocusRelPosN[0].value = 0;
+    FocusRelPosN[0].step = 1;
 
     return true;
 }
 
-/* Update properties */
+/* Update properties. */
 bool FocuserRob::updateProperties()
 {
     INDI::Focuser::updateProperties();
     return true;
 }
 
-/* Handle timer expiry */
+/* Set speed in ticks per millisecond. */
+bool FocuserRob::SetFocuserSpeed(int speed)
+{
+	bool success = false;
+	
+    if (speed != (int) FocusSpeedN[0].value)
+    {
+        if ((FocusTimerNP.s == IPS_BUSY) || (FocusAbsPosNP.s == IPS_BUSY) || (FocusRelPosNP.s == IPS_BUSY))
+        {
+            IDMessage(getDeviceName(), "Can't set the speed while the motor is running.");
+        }
+        else
+        {
+            if ((speed < FocusSpeedN[0].min) || (speed > FocusSpeedN[0].max))
+            {
+                IDMessage(getDeviceName(), "Error, requested speed is out of range.");
+            }
+            else
+            {
+                FocusSpeedN[0].value = speed;
+                FocusSpeedNP.s = IPS_OK;
+                IDSetNumber(&FocusSpeedNP, "Speed set.");
+                success = true;
+            }
+        }
+    }
+    else
+    {
+        success = true;
+    }
+    
+    return success;
+}
+
+/* Handle timer expiry - used to tick along the motor if the
+   speed is low enough. */
 void FocuserRob::TimerHit()
 {
-    int nextTimer = 1000;
-
     if (isConnected())
     {
-        SetTimer(nextTimer);
+        /* Only do stuff if we're connected */        
+        if (gTicksRequired > 0)
+        {
+            if (gTicksElapsed < gTicksRequired)
+            {
+                /* Set the next timer and do a tick */
+                SetTimer(gPollTimerMs);
+                oneTick(MIN_PWM_HIGH_TIME_MS);
+                gTicksElapsed++;
+            }
+            else
+            {
+                /* Done enough, abort now */
+                AbortFocuser();
+            }
+        }        
     }
 }
 
-/* Handle a request to move the focuser */
+/* Handle a request to move the focuser at a given speed (in ticks per second)
+   for a given duration (in ms). */
 IPState FocuserRob::MoveFocuser(FocusDirection dir, int speed, uint16_t duration)
 {
     IPState returnState = IPS_ALERT;
 
-    double targetTicks = (speed * duration) / (FocusSpeedN[0].max * FocusTimerN[0].max);
-    double plannedTicks = ticks;
-    double plannedAbsPos = 0;
-
-    if (dir == FOCUS_INWARD)
-    {
-        plannedTicks -= targetTicks;
-    }
-    else
-    {
-        plannedTicks += targetTicks;
-    }
-	
-    if (isDebug())
-    {
-        IDLog("Current ticks: %g - target Ticks: %g, plannedTicks %g.\n", ticks, targetTicks, plannedTicks);
-    }
-	
-    /* TODO: 5000? */
-    plannedAbsPos = (plannedTicks - initTicks) * 5000 + (FocusAbsPosN[0].max - FocusAbsPosN[0].min) / 2;
-
-    if (plannedAbsPos < FocusAbsPosN[0].min || plannedAbsPos > FocusAbsPosN[0].max)
-    {
-        IDMessage(getDeviceName(), "Error, requested position is out of range.");
-    }
-    else
-    {
-        /* TODO: actually move */
-        IDMessage(getDeviceName() , "TODO MoveFocuser().");
-
-        ticks = plannedTicks;
-        if (isDebug())
-        {
-            IDLog("Current absolute position: %g, current ticks is %g.\n", plannedAbsPos, ticks);
-        }
-
-        FocusAbsPosN[0].value = plannedAbsPos;
-
-        IDSetNumber(&FocusAbsPosNP, NULL);
+    if (SetFocuserSpeed(speed))
+	{
+        int32_t relativeTicks = (speed * duration) / 1000; /* 1000 'cos duration is in milliseconds */
 		
-	returnState = IPS_OK;
+        if (dir == FOCUS_OUTWARD)
+        {
+            relativeTicks -= relativeTicks;
+        }
+        
+        double plannedAbsPos = FocusAbsPosN[0].value + relativeTicks;
+	
+        if ((plannedAbsPos < FocusAbsPosN[0].min) || (plannedAbsPos > FocusAbsPosN[0].max))
+        {
+            IDMessage(getDeviceName(), "Error, requested position is out of range.");
+        }
+        else
+        {
+            /* Move */
+            returnState = move(relativeTicks);
+        }
     }
 
     return returnState;
 }
 
-/* Handle a request to move the focuser to a given tick count */
+/* Handle a request to move the focuser to a given tick count. */
 IPState FocuserRob::MoveAbsFocuser(uint32_t targetTicks)
 {
     IPState returnState = IPS_ALERT;
 	
-    if (targetTicks < FocusAbsPosN[0].min || targetTicks > FocusAbsPosN[0].max)
+    if (targetTicks != FocusAbsPosN[0].value)
     {
-        IDMessage(getDeviceName(), "Error, requested position is out of range.");
-    }
-    else
-    {
-        double mid = (FocusAbsPosN[0].max - FocusAbsPosN[0].min)/2;
-
-        IDMessage(getDeviceName() , "Moving to requested position...");
-
-        /* Limit to +/- 10 from initTicks */
-        ticks = initTicks + (targetTicks - mid) / 5000.0;
-
-        if (isDebug())
+        if ((targetTicks < FocusAbsPosN[0].min) || (targetTicks > FocusAbsPosN[0].max))
         {
-            IDLog("Current ticks: %g\n", ticks);
+            IDMessage(getDeviceName(), "Error, requested position is out of range.");
         }
-	
-        /* TODO: actually move */
-        IDMessage(getDeviceName() , "TODO MoveAbsFocuser().");
-		
-        FocusAbsPosN[0].value = targetTicks;
-		
-        returnState = IPS_OK;
+        else
+        {
+            int32_t relativeTicks = targetTicks - FocusAbsPosN[0].value;
+            
+            /* Move */
+            returnState = move(relativeTicks);
+        }
     }
 	
     return returnState;
 }
 
-/* Handle a request to move the focuser by a number of ticks */
+/* Handle a request to move the focuser by a number of ticks. */
 IPState FocuserRob::MoveRelFocuser(FocusDirection dir, uint32_t ticks)
 {
     uint32_t targetTicks = FocusAbsPosN[0].value + (ticks * (dir == FOCUS_INWARD ? -1 : 1));
-
-    FocusAbsPosNP.s = IPS_BUSY;
-    IDSetNumber(&FocusAbsPosNP, NULL);
-
+    
+    /* Let the absolute move function do the work */
     return MoveAbsFocuser(targetTicks);
+}
+
+/* Stop the focuser. */
+bool FocuserRob::AbortFocuser()
+{
+    /* Stop the motor */
+    setStop();
+    setStandby(true);
+
+    /* If we were moving, setup the variables for how far we got */
+    if (gTicksRequired > 0)
+    {
+        setVariablesAfterMove(gTicksRequired - gTicksElapsed);
+        gTicksRequired = 0;
+    }
+	
+	FocusTimerNP.s = IPS_IDLE;
+	FocusAbsPosNP.s = IPS_IDLE;
+	FocusRelPosNP.s = IPS_IDLE;
+	IDSetNumber(&FocusTimerNP, NULL);
+	IDSetNumber(&FocusAbsPosNP, NULL);
+	IDSetNumber(&FocusRelPosNP, NULL);
+	
+    return true;
 }
 
 /* End of file */
