@@ -1,6 +1,6 @@
 <devGroup group="Focusers">
     <device label="Rob Focuser">
-    <driver name="Rob Focuser">indi_rob_focuser</driver>
-    <version>0.1</version>
+        <driver name="Rob Focuser">indi_rob_focuser</driver>
+        <version>0.1</version>
     </device>
 </devGroup>

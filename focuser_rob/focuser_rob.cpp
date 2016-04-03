@@ -105,10 +105,7 @@ std::unique_ptr <FocuserRob>  focuserRob(new FocuserRob());
 void FocuserRob::oneTick(uint16_t highTimeMs)
 {
     digitalWrite(PWM_TB6612FNG, HIGH);
-    if (isDebug())
-    {
-        IDLog(".");
-    }
+    DEBUG(INDI::Logger::DBG_SESSION, ".");
     usleep(highTimeMs);
     digitalWrite(PWM_TB6612FNG, LOW);
 }
@@ -122,21 +119,15 @@ void FocuserRob::setDirection(bool isOutward)
         gDirectionIsOutward = true;
         /* Counter clockwise */
         digitalWrite(IN1_TB6612FNG, LOW);
-        digitalWrite(IN2_TB6612FNG, HIGH);	
-        if (isDebug())
-        {
-            IDLog("Direction set to counter-clockwise.\n");
-        }    
+        digitalWrite(IN2_TB6612FNG, HIGH);
+        DEBUG(INDI::Logger::DBG_SESSION, "Direction set to counter-clockwise.");
     }
     else
     {
         /* Clockwise */
         digitalWrite(IN1_TB6612FNG, HIGH);
         digitalWrite(IN2_TB6612FNG, LOW);	
-        if (isDebug())
-        {
-            IDLog("Direction set to clockwise.\n");
-        }    
+        DEBUG(INDI::Logger::DBG_SESSION, "Direction set to clockwise.");
     }
 }
 
@@ -145,11 +136,8 @@ void FocuserRob::setDirection(bool isOutward)
 void FocuserRob::setShortBreak()
 {
     digitalWrite(IN1_TB6612FNG, HIGH);
-    digitalWrite(IN2_TB6612FNG, HIGH);	
-    if (isDebug())
-    {
-        IDLog("Motor set to SHORT BREAK.\n");
-    }    
+    digitalWrite(IN2_TB6612FNG, HIGH);
+    DEBUG(INDI::Logger::DBG_SESSION, "Motor set to SHORT BREAK.");
 }
 
 /* Set the motor into stop mode.
@@ -160,10 +148,7 @@ void FocuserRob::setStop()
     digitalWrite(IN1_TB6612FNG, LOW);
     digitalWrite(IN2_TB6612FNG, LOW);	
     digitalWrite(PWM_TB6612FNG, HIGH);
-    if (isDebug())
-    {
-        IDLog("Motor set to STOP.\n");
-    }    
+    DEBUG(INDI::Logger::DBG_SESSION, "Motor set to Stop.");
 }
 
 /* Set the motor into standby, or take it out.
@@ -175,18 +160,12 @@ void FocuserRob::setStandby(bool isOn)
     if (isOn)
     {
         digitalWrite(STBY_TB6612FNG, LOW);
-        if (isDebug())
-        {
-            IDLog("Motor in standby.\n");
-        }    
+        DEBUG(INDI::Logger::DBG_SESSION, "Motor in standby.");
     }
     else
     {
         digitalWrite(STBY_TB6612FNG, HIGH);
-        if (isDebug())
-        {
-            IDLog("Motor running.\n");
-        }    
+        DEBUG(INDI::Logger::DBG_SESSION, "Motor running");
     }
 }
 
@@ -234,10 +213,7 @@ IPState FocuserRob::move(int32_t relativeTicks)
     if (delayMs < MIN_POLL_TIMER_MS)
     {
         /* The speed is too high to do on a timer, do the move here */
-        if (isDebug())
-        {
-            IDLog("Moving %d tick(s) inside move() function, delay %d ms, speed %g tick(s)/ms.\n", relativeTicks, delayMs, FocusSpeedN[0].value);
-        }
+        DEBUGF(INDI::Logger::DBG_SESSION, "Moving %d tick(s) inside move() function, delay %d ms, speed %g tick(s)/ms.", relativeTicks, delayMs, FocusSpeedN[0].value);
         
         for (int32_t x = 0; x < relativeTicks; x++)
         {
@@ -251,20 +227,14 @@ IPState FocuserRob::move(int32_t relativeTicks)
         /* Set things straight after the move */
         setVariablesAfterMove(relativeTicks);
         
-        if (isDebug())
-        {
-            IDLog("Move completed.\n");
-        }
+        DEBUG(INDI::Logger::DBG_SESSION, "Move completed.");
         
         returnState = IPS_OK;
     }
     else
     {
         /* The poll timer will do the move */
-        if (isDebug())
-        {
-            IDLog("Moving %d tick(s) using the poll timer, delay %d ms, speed %g tick(s)/ms.\n", relativeTicks, delayMs, FocusSpeedN[0].value);
-        }
+        DEBUGF(INDI::Logger::DBG_SESSION, "Moving %d tick(s) using the poll timer, delay %d ms, speed %g tick(s)/ms.", relativeTicks, delayMs, FocusSpeedN[0].value);
         
         gPollTimerMs = delayMs;
         gTicksRequired = (uint32_t) relativeTicks;
@@ -342,7 +312,7 @@ FocuserRob::FocuserRob()
     gDirectionIsOutward = false;
     SetFocuserCapability(FOCUSER_CAN_ABS_MOVE | FOCUSER_CAN_REL_MOVE | FOCUSER_CAN_ABORT | FOCUSER_HAS_VARIABLE_SPEED);
 	
-	/* Set up wiringX and pin directions */
+    /* Set up wiringX and pin directions */
     wiringXSetup();
     pinMode(IN1_TB6612FNG, OUTPUT);
     pinMode(IN2_TB6612FNG, OUTPUT);
@@ -377,7 +347,7 @@ bool FocuserRob::Disconnect()
 /* INDI is asking us for our default device name. */
 const char * FocuserRob::getDefaultName()
 {
-	/* "Rob Focuser" rather than "Focuser Rob" as the latter gets confused with "Focuser Simulator" */
+    /* "Rob Focuser" rather than "Focuser Rob" as the latter gets confused with "Focuser Simulator" */
     return "Rob Focuser";
 }
 
@@ -387,7 +357,7 @@ bool FocuserRob::initProperties()
     INDI::Focuser::initProperties();
 
     /* Speed is in ticks per second */
-	FocusSpeedN[0].min = 1;
+    FocusSpeedN[0].min = 1;
     FocusSpeedN[0].max = 255;
     FocusSpeedN[0].value = 100;    
 
@@ -402,6 +372,9 @@ bool FocuserRob::initProperties()
     FocusRelPosN[0].value = 0;
     FocusRelPosN[0].step = 1;
 
+    /* Mmmmm, debugging... */
+    addDebugControl();
+        
     return true;
 }
 
@@ -415,7 +388,7 @@ bool FocuserRob::updateProperties()
 /* Set speed in ticks per millisecond. */
 bool FocuserRob::SetFocuserSpeed(int speed)
 {
-	bool success = false;
+    bool success = false;
 	
     if (speed != (int) FocusSpeedN[0].value)
     {
@@ -478,7 +451,7 @@ IPState FocuserRob::MoveFocuser(FocusDirection dir, int speed, uint16_t duration
     IPState returnState = IPS_ALERT;
 
     if (SetFocuserSpeed(speed))
-	{
+    {
         int32_t relativeTicks = (speed * duration) / 1000; /* 1000 'cos duration is in milliseconds */
 		
         if (dir == FOCUS_OUTWARD)
@@ -546,20 +519,17 @@ bool FocuserRob::AbortFocuser()
     /* If we were moving, setup the variables for how far we got */
     if (gTicksRequired > 0)
     {
-        if (isDebug())
-        {
-            IDLog("End of move at %d tick(s) out of %d.\n", gTicksElapsed, gTicksRequired);
-        }    
-        setVariablesAfterMove(gTicksRequired - gTicksElapsed);
+        DEBUGF(INDI::Logger::DBG_SESSION, "End of move at %d tick(s) out of %d.", gTicksElapsed, gTicksRequired);
+        setVariablesAfterMove(gTicksElapsed);
         gTicksRequired = 0;
     }
 	
-	FocusTimerNP.s = IPS_IDLE;
-	FocusAbsPosNP.s = IPS_IDLE;
-	FocusRelPosNP.s = IPS_IDLE;
-	IDSetNumber(&FocusTimerNP, NULL);
-	IDSetNumber(&FocusAbsPosNP, NULL);
-	IDSetNumber(&FocusRelPosNP, NULL);
+    FocusTimerNP.s = IPS_IDLE;
+    FocusAbsPosNP.s = IPS_IDLE;
+    FocusRelPosNP.s = IPS_IDLE;
+    IDSetNumber(&FocusTimerNP, NULL);
+    IDSetNumber(&FocusAbsPosNP, NULL);
+    IDSetNumber(&FocusRelPosNP, NULL);
 	
     return true;
 }
